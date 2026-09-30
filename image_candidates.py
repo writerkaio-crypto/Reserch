@@ -110,7 +110,9 @@ async def fetch_images(ctx, url):
             data = d.get("data") or {}
             if data.get("id") == mid.group(1):
                 return {"images": data.get("photos") or [], "title": data.get("name", ""),
-                        "status": data.get("status", "")}
+                        "status": data.get("status", ""),
+                        "condition": (data.get("item_condition") or {}).get("name", ""),
+                        "description": (data.get("description") or "")[:400]}
         photos = sorted(set(re.findall(
             rf"https://static\.mercdn\.net/item/detail/orig/photos/{mid.group(1)}_\d+\.jpg",
             html)), key=lambda u: int(re.search(r"_(\d+)\.jpg", u).group(1)))
