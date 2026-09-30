@@ -199,7 +199,7 @@ def fetch_with_retry(state, item_id, attempts=5):
             time.sleep(2 ** (n + 1))
 
 
-def fetch_via_csv(path):
+def fetch_via_csv(path, site=None):
     """Browse API で各出品の画像枚数を取得する。
 
     Browse API は 1 日 5000 回までなので、結果を CACHE_PATH に保存し、
@@ -207,6 +207,8 @@ def fetch_via_csv(path):
     SKU ごとの代表 (US 優先) を先に取得し、残りのサイトは後回しにする。
     """
     listings = read_seller_hub_csv(path)
+    if site:
+        listings = [li for li in listings if li["site"] == site]
     cache = json.loads(CACHE_PATH.read_text()) if CACHE_PATH.exists() else {}
 
     first, seen_sku = [], set()
@@ -286,6 +288,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--csv", help="Seller Hub からダウンロードした出品中リスト CSV")
+    ap.add_argument("--site", help="CSV 方式でこのサイトの出品だけを対象にする (例: US)")
     ap.add_argument("--max-images", type=int, default=2,
                     help="この枚数以下を抽出 (既定: 2)")
     args = ap.parse_args()
@@ -293,7 +296,7 @@ def main():
     stamp = date.today().isoformat()
 
     if args.csv:
-        listings = fetch_via_csv(args.csv)
+        listings = fetch_via_csv(args.csv, args.site)
         skus = summarize_by_sku(listings, args.max_images)
         write_csv(OUT_DIR / f"low_image_skus_{stamp}.csv", skus, list(skus[0]) if skus else ["sku"])
         detail = sorted(
