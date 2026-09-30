@@ -184,6 +184,21 @@ def fetch_image_count(token, item_id):
     return max((image_count(i) for i in items), default=0), url
 
 
+def fetch_with_retry(state, item_id, attempts=5):
+    """通信エラーは待って再試行、トークン期限切れ (401) は再取得して再試行する。"""
+    for n in range(attempts):
+        try:
+            return fetch_image_count(state["token"], item_id)
+        except urllib.error.HTTPError as e:
+            if e.code != 401 or n == attempts - 1:
+                raise
+            state["token"] = get_token()
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
+            if n == attempts - 1:
+                raise
+            time.sleep(2 ** (n + 1))
+
+
 def fetch_via_csv(path):
     """Browse API で各出品の画像枚数を取得する。
 
@@ -204,11 +219,11 @@ def fetch_via_csv(path):
             if li["item_id"] not in cache]
     print(f"{len(listings)} 件中 取得済み {len(listings) - len(todo)} 件 / 残り {len(todo)} 件")
 
-    token = get_token()
+    state = {"token": get_token()}
     try:
         for n, li in enumerate(todo, 1):
             try:
-                count, _ = fetch_image_count(token, li["item_id"])
+                count, _ = fetch_with_retry(state, li["item_id"])
                 cache[li["item_id"]] = count
             except urllib.error.HTTPError as e:
                 if e.code == 429:
@@ -219,6 +234,8 @@ def fetch_via_csv(path):
                 else:
                     print(f"[ERR] {li['item_id']}: {e.code} {e.read()[:200]!r}",
                           file=sys.stderr)
+            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+                print(f"[ERR] {li['item_id']}: {e}", file=sys.stderr)  # 再実行で再取得
             if n % 100 == 0:
                 CACHE_PATH.write_text(json.dumps(cache))
                 print(f"{n}/{len(todo)} checked")
