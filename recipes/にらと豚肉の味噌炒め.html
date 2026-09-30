@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>にらと豚肉の味噌炒め</title>
+<style>
+  @page { size: A4; margin: 16mm 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "IPAPGothic", "IPAGothic", sans-serif;
+    color: #2b2b2b;
+    font-size: 11pt;
+    line-height: 1.6;
+  }
+  .accent { color: #c0392b; }
+  header { border-bottom: 3px solid #c0392b; padding-bottom: 5mm; margin-bottom: 6mm; }
+  .kicker { font-size: 10.5pt; color: #666; margin: 0 0 1mm; }
+  h1 { font-size: 24pt; margin: 0 0 3mm; letter-spacing: 0.02em; }
+  .meta { display: flex; gap: 4mm; flex-wrap: wrap; margin: 0 0 3mm; }
+  .chip {
+    border: 1px solid #c0392b; color: #c0392b; border-radius: 99px;
+    padding: 0.5mm 3.5mm; font-size: 10pt; font-weight: bold;
+  }
+  .lead { margin: 0; font-size: 10.5pt; color: #444; }
+
+  .cols { display: grid; grid-template-columns: 70mm 1fr; gap: 8mm; }
+  h2 {
+    font-size: 13.5pt; margin: 0 0 3mm; padding-left: 3mm;
+    border-left: 5px solid #c0392b;
+  }
+  .serv { font-size: 10pt; font-weight: normal; color: #666; margin-left: 2mm; }
+
+  table.ing { width: 100%; border-collapse: collapse; font-size: 11pt; }
+  table.ing td { padding: 1.6mm 1mm; border-bottom: 1px dotted #bbb; vertical-align: top; }
+  table.ing td.q { text-align: right; white-space: nowrap; }
+  table.ing tr.group td {
+    padding-top: 4mm; border-bottom: 1px solid #c0392b;
+    font-weight: bold; color: #c0392b;
+  }
+  table.ing tr.sub td:first-child { padding-left: 4mm; }
+
+  .box {
+    margin-top: 6mm; background: #faf3f2; border-radius: 2mm;
+    padding: 3.5mm 4mm; font-size: 10pt;
+  }
+  .box h3 { font-size: 10.5pt; margin: 0 0 1.5mm; color: #c0392b; }
+  .box p { margin: 0; }
+  .nut { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5mm 4mm; }
+  .nut span:nth-child(even) { text-align: right; font-weight: bold; }
+
+  ol.steps { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+  ol.steps li {
+    counter-increment: s; position: relative;
+    padding: 0 0 5mm 12mm; margin: 0 0 5mm;
+    border-bottom: 1px dotted #bbb; font-size: 11.5pt;
+  }
+  ol.steps li:last-child { border-bottom: none; }
+  ol.steps li::before {
+    content: counter(s); position: absolute; left: 0; top: 0;
+    width: 8mm; height: 8mm; border-radius: 50%;
+    background: #c0392b; color: #fff; font-weight: bold;
+    display: flex; align-items: center; justify-content: center; font-size: 11pt;
+  }
+  .star { color: #c0392b; font-weight: bold; }
+
+  footer {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    font-size: 8.5pt; color: #888; border-top: 1px solid #ddd; padding-top: 2mm;
+  }
+</style>
+</head>
+<body>
+<header>
+  <p class="kicker">さっと炒めて簡単！</p>
+  <h1>にらと豚肉の<span class="accent">味噌炒め</span></h1>
+  <div class="meta">
+    <span class="chip">調理時間 約10分</span>
+    <span class="chip">1人分</span>
+    <span class="chip">費用目安 300円前後</span>
+  </div>
+  <p class="lead">ひとり暮らしの方に人気のニラを使用した時短おかずレシピです！味噌のコクが、豚肉とニラと絡んで絶妙な味です♪ご飯と合わせて丼にしても美味しいですよ。</p>
+</header>
+
+<div class="cols">
+  <section>
+    <h2>材料<span class="serv">【1人分】</span></h2>
+    <table class="ing">
+      <tr><td>豚バラ薄切り肉</td><td class="q">100g</td></tr>
+      <tr><td>ニラ</td><td class="q">6本(30g)</td></tr>
+      <tr><td>玉ねぎ</td><td class="q">1/2個(100g)</td></tr>
+      <tr><td>ごま油</td><td class="q">大さじ1</td></tr>
+      <tr class="group"><td colspan="2">☆味噌だれ</td></tr>
+      <tr class="sub"><td>酒</td><td class="q">大さじ1</td></tr>
+      <tr class="sub"><td>砂糖</td><td class="q">小さじ1</td></tr>
+      <tr class="sub"><td>みそ</td><td class="q">大さじ1</td></tr>
+      <tr class="sub"><td>おろしにんにく</td><td class="q">少々</td></tr>
+    </table>
+
+    <div class="box">
+      <h3>栄養（1人分あたり）</h3>
+      <div class="nut">
+        <span>カロリー</span><span>615kcal</span>
+        <span>炭水化物</span><span>18.6g</span>
+        <span>脂質</span><span>48.7g</span>
+        <span>たんぱく質</span><span>18.2g</span>
+        <span>糖質</span><span>15.5g</span>
+        <span>塩分</span><span>2.4g</span>
+      </div>
+    </div>
+
+    <div class="box">
+      <h3>Q. 豚肉の種類はなんでも良いですか？</h3>
+      <p>A. はい、豚こま肉でも豚ひき肉でも代用してお作りいただけます。</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>手順</h2>
+    <ol class="steps">
+      <li>豚肉は3cm幅に切る。</li>
+      <li>ニラは根元を切り落とし、4cm幅に切る。玉ねぎは薄切りにする。</li>
+      <li>ボウルに<span class="star">☆</span>を入れて混ぜる。</li>
+      <li>フライパンにごま油を入れて熱し、豚肉、玉ねぎを入れて肉の色が変わるまで中火で炒める。</li>
+      <li>ニラ、<span class="star">☆</span>を加えてさっと炒め合わせる。</li>
+    </ol>
+  </section>
+</div>
+
+<footer>出典：デリッシュキッチン「さっと炒めて簡単！にらと豚肉の味噌炒め」 https://delishkitchen.tv/recipes/198058543918612902</footer>
+</body>
+</html>
