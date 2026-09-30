@@ -38,15 +38,24 @@ CENTER = Alignment(horizontal="center", vertical="top")
 
 
 def selected_source(sku, cand, review):
-    """(採用元, ページURL, 画像URL一覧) を返す。候補なしは None。"""
+    """(採用元, ページURL一覧, 画像URL一覧) を返す。候補なしは None。
+
+    pick は "supplier" / 候補ページの URL / [{"url": ..., "images": [1始まりの番号]}, ...]。
+    リスト形式なら複数ページから写真を選んで並べる (同梱物だけが写った写真を選ぶ場合など)。
+    """
     pick = review.get("pick")
     if pick == "supplier":
         s = next(s for s in cand["suppliers"] if len(s.get("images") or []) >= 3)
-        return f"仕入れ先（{COL_NAMES[s['col']]}列）", s["url"], s["images"]
-    if pick:
-        c = next(c for c in cand["sold"]["candidates"] if c["url"] == pick)
-        return "メルカリ売り切れ（AS列）", c["url"], c["images"]
-    return None
+        return f"仕入れ先（{COL_NAMES[s['col']]}列）", [s["url"]], s["images"]
+    if not pick:
+        return None
+    sold = cand["sold"]
+    label = sold.get("label", "メルカリ売り切れ（AS列）")
+    by_url = {c["url"]: c for c in sold["candidates"]}
+    if isinstance(pick, str):
+        return label, [pick], by_url[pick]["images"]
+    images = [by_url[p["url"]]["images"][n - 1] for p in pick for n in p["images"]]
+    return f"{label}・写真を選択", [p["url"] for p in pick], images
 
 
 def put(ws, r, c, v, font=F_BASE, align=WRAP, link=None):
@@ -72,8 +81,8 @@ def main_sheet(ws, skus, cands, reviews):
                     if (sel := selected_source(sku, cands[sku], reviews[sku]))), default=0)
     names = ["反映\n(OK/NG)", "SKU", "eBay商品番号", "eBayタイトル", "現在の\n画像枚数",
              "採用元", "採用ページ", "差し替え後\n画像枚数", "判定メモ"] + \
-            [f"画像{i}" for i in range(1, max_imgs + 1)]
-    header(ws, names, [9, 7, 15, 40, 9, 20, 34, 10, 42] + [9] * max_imgs)
+            ["一致度"] + [f"画像{i}" for i in range(1, max_imgs + 1)]
+    header(ws, names, [9, 7, 15, 40, 9, 20, 34, 10, 42, 8] + [9] * max_imgs)
     ws.freeze_panes = "E2"
 
     dv = DataValidation(type="list", formula1='"OK,NG"', allow_blank=True)
@@ -88,13 +97,14 @@ def main_sheet(ws, skus, cands, reviews):
         put(ws, r, 4, c["ebay_title"])
         put(ws, r, 5, int(c["ebay_images"]), align=CENTER)
         if sel:
-            source, url, images = sel
+            source, urls, images = sel
             check.fill = FILL_CHECK
             dv.add(check)
             put(ws, r, 6, source)
-            put(ws, r, 7, url, link=url)
+            put(ws, r, 7, "\n".join(urls), link=urls[0])
             put(ws, r, 8, len(images), align=CENTER)
-            for i, u in enumerate(images, 10):
+            put(ws, r, 10, rv.get("match", ""), align=CENTER)
+            for i, u in enumerate(images, 11):
                 put(ws, r, i, "開く", align=CENTER, link=u)
         else:
             check.value = "対象外"
@@ -116,6 +126,7 @@ def main_sheet(ws, skus, cands, reviews):
     for i, t in enumerate([
         "・黄色の「反映」セルで OK / NG を選んでください。OK の行だけ eBay の画像を丸ごと差し替えます",
         "・「画像1〜」は差し替え後の画像（この順番で登録）。「開く」で画像を確認できます",
+        "・一致度: ◎ 同じ商品・同じ状態（未開封・付属品）　○ 同じ商品だが写り方に差あり（判定メモ参照）",
         "・灰色の行は条件に合う候補が見つからなかった SKU です（判定メモに理由）",
         "・候補の全件は「候補一覧」シートにあります",
     ], 1):
@@ -131,25 +142,26 @@ def candidate_sheet(ws, skus, cands, reviews):
     for sku in skus:
         c, rv = cands[sku], reviews[sku]
         sel = selected_source(sku, c, rv)
-        chosen = sel[1] if sel else None
+        chosen = set(sel[1]) if sel else set()
         rows = [(f"仕入れ先（{COL_NAMES[s['col']]}列）", s["url"], s.get("title", ""),
                  len(s.get("images") or []), s.get("error", "")) for s in c.get("suppliers", [])]
         sold = c.get("sold") or {}
         rows += [("メルカリ売り切れ", x["url"], x.get("title", ""), len(x["images"]), "")
                  for x in sold.get("candidates", [])]
-        if sold:
-            rows.append(("売り切れ検索", sold.get("search_url", ""),
-                         f"売り切れ {sold.get('sold_found', 0)} 件中 {sold.get('checked', 0)} 件を確認",
-                         None, sold.get("error", "")))
+        for q in sold.get("searches") or ([sold] if sold else []):
+            rows.append(("売り切れ検索", q.get("search_url", ""),
+                         f"{q['query']}：" * bool(q.get("query")) +
+                         f"売り切れ {q.get('sold_found', 0)} 件中 {q.get('checked', 0)} 件を確認",
+                         None, q.get("error", "")))
         for kind, url, title, n, err in rows:
             put(ws, r, 1, int(sku) if sku.isdigit() else sku, align=CENTER)
             put(ws, r, 2, kind)
             put(ws, r, 3, url, link=url or None)
             put(ws, r, 4, title)
             put(ws, r, 5, n, align=CENTER)
-            put(ws, r, 6, "◎" if url == chosen else "", align=CENTER)
+            put(ws, r, 6, "◎" if url in chosen else "", align=CENTER)
             put(ws, r, 7, err)
-            if url == chosen:
+            if url in chosen:
                 for col in range(1, 8):
                     ws.cell(row=r, column=col).fill = FILL_OK
             r += 1
@@ -168,6 +180,10 @@ def main():
         ws.sheet_properties.pageSetUpPr.fitToPage = True
         ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
     path = OUT_DIR / f"画像差し替え候補_{date.today().isoformat()}.xlsx"
+    n = 2
+    while path.exists():  # 確認待ちの既存ファイルを上書きしない
+        path = OUT_DIR / f"画像差し替え候補_{date.today().isoformat()}_{n}.xlsx"
+        n += 1
     wb.save(path)
     print(f"wrote {path}")
 

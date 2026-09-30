@@ -25,17 +25,18 @@ from openpyxl import load_workbook
 from low_image_listings import NS, trading_call
 
 OUT_DIR = Path(__file__).parent / "output"
-FIRST_IMAGE_COL = 10  # 「画像1」列
 
 
 def approved_rows(path):
     ws = load_workbook(path)["差し替え予定"]
+    first_image_col = next(c for c in range(1, ws.max_column + 1)
+                           if ws.cell(1, c).value == "画像1")
     rows = []
     for r in range(2, ws.max_row + 1):
         if str(ws.cell(r, 1).value or "").strip().upper() != "OK":
             continue
         images = [ws.cell(r, c).hyperlink.target
-                  for c in range(FIRST_IMAGE_COL, ws.max_column + 1)
+                  for c in range(first_image_col, ws.max_column + 1)
                   if ws.cell(r, c).hyperlink]
         rows.append({"sku": str(ws.cell(r, 2).value), "item_id": str(ws.cell(r, 3).value),
                      "source": ws.cell(r, 7).value, "images": images})
