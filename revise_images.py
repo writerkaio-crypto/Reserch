@@ -2,6 +2,7 @@
 
   python revise_images.py <確認済みExcel>            # 予行演習 (eBay は変更しない)
   python revise_images.py <確認済みExcel> --apply    # 実際に差し替える
+  python revise_images.py <確認済みExcel> --apply --sku 120   # 指定 SKU だけ (再試行用)
 
 環境変数 EBAY_USER_TOKEN (出品者本人のトークン) を使用。
   1) GetItem で出品中か・SKU が一致するかを確認し、現在の画像 URL をバックアップ
@@ -62,7 +63,10 @@ def upload_picture(token, url):
     root = trading_call(token, "UploadSiteHostedPictures", (
         f"<ExternalPictureURL>{escape(url)}</ExternalPictureURL>"
         "<PictureSet>Supersize</PictureSet>"))
-    return root.findtext("e:SiteHostedPictureDetails/e:FullURL", namespaces=NS)
+    hosted = root.findtext("e:SiteHostedPictureDetails/e:FullURL", namespaces=NS)
+    if not hosted:
+        raise RuntimeError(f"画像の取り込みに失敗しました: {url}")
+    return hosted
 
 
 def revise_pictures(token, item_id, urls):
@@ -81,12 +85,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("excel")
     ap.add_argument("--apply", action="store_true", help="実際に eBay を変更する")
+    ap.add_argument("--sku", nargs="+", help="指定した SKU の行だけ処理する (再試行用)")
     args = ap.parse_args()
     token = os.environ.get("EBAY_USER_TOKEN", "")
     if len(token) < 100:
         sys.exit("EBAY_USER_TOKEN が未設定か途中で切れています")
 
     rows = approved_rows(args.excel)
+    if args.sku:
+        rows = [r for r in rows if any(sku_matches(s, r["sku"]) for s in args.sku)]
     print(f"反映 OK: {len(rows)} 件 ({'本番' if args.apply else '予行演習'})")
     log_path = OUT_DIR / f"image_revise_log_{datetime.now():%Y-%m-%d}.json"
     log = json.loads(log_path.read_text()) if log_path.exists() else []
