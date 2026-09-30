@@ -35,6 +35,7 @@ TRADING_URL = "https://api.ebay.com/ws/api.dll"
 BROWSE_ITEM_URL = "https://api.ebay.com/buy/browse/v1/item"
 NS = {"e": "urn:ebay:apis:eBLBaseComponents"}
 PAGE_SIZE = 200
+CACHE_PATH = OUT_DIR / ".image_cache.json"
 
 
 # ---------- 1) ユーザートークン方式 (Trading API) ----------
@@ -123,7 +124,7 @@ def fetch_via_trading(token):
 # ---------- 2) Seller Hub CSV 方式 (Browse API) ----------
 
 def read_seller_hub_csv(path):
-    """Item number ごとに SKU・タイトルをまとめる。先頭のメタ行はスキップする。"""
+    """1 行 = 1 出品として読む。先頭のメタ行はスキップする。"""
     with open(path, newline="", encoding="utf-8-sig") as f:
         rows = list(csv.reader(f))
     for i, row in enumerate(rows):
@@ -134,21 +135,25 @@ def read_seller_hub_csv(path):
         sys.exit("CSV に 'Item number' 列が見つかりません")
     idx = {c: n for n, c in enumerate(cols)}
     sku_col = next((n for c, n in idx.items() if c.startswith("custom label")), None)
-    title_col = idx.get("title")
 
-    items = {}
+    def get(row, col):
+        n = idx.get(col) if isinstance(col, str) else col
+        return row[n].strip() if n is not None and n < len(row) else ""
+
+    listings, seen = [], set()
     for row in rows[i + 1:]:
-        if len(row) <= idx["item number"]:
+        item_id = get(row, "item number")
+        if not item_id.isdigit() or item_id in seen:
             continue
-        item_id = row[idx["item number"]].strip()
-        if not item_id.isdigit():
-            continue
-        it = items.setdefault(item_id, {"item_id": item_id, "skus": [], "title": ""})
-        if sku_col is not None and row[sku_col].strip():
-            it["skus"].append(row[sku_col].strip())
-        if title_col is not None and not it["title"]:
-            it["title"] = row[title_col].strip()
-    return list(items.values())
+        seen.add(item_id)
+        listings.append({
+            "item_id": item_id,
+            "sku": get(row, sku_col),
+            "title": get(row, "title"),
+            "site": get(row, "listing site"),
+            "quantity": get(row, "available quantity"),
+        })
+    return listings
 
 
 def browse_get(token, path, params):
@@ -180,29 +185,84 @@ def fetch_image_count(token, item_id):
 
 
 def fetch_via_csv(path):
+    """Browse API で各出品の画像枚数を取得する。
+
+    Browse API は 1 日 5000 回までなので、結果を CACHE_PATH に保存し、
+    上限 (429) に達したら中断 → 翌日再実行で続きから取得する。
+    SKU ごとの代表 (US 優先) を先に取得し、残りのサイトは後回しにする。
+    """
+    listings = read_seller_hub_csv(path)
+    cache = json.loads(CACHE_PATH.read_text()) if CACHE_PATH.exists() else {}
+
+    first, seen_sku = [], set()
+    for li in sorted(listings, key=lambda li: li["site"] != "US"):
+        if li["sku"] not in seen_sku:
+            seen_sku.add(li["sku"])
+            first.append(li)
+    first_ids = {li["item_id"] for li in first}
+    todo = [li for li in first + [li for li in listings if li["item_id"] not in first_ids]
+            if li["item_id"] not in cache]
+    print(f"{len(listings)} 件中 取得済み {len(listings) - len(todo)} 件 / 残り {len(todo)} 件")
+
     token = get_token()
-    rows = read_seller_hub_csv(path)
-    items = []
-    for n, r in enumerate(rows, 1):
-        skus = list(dict.fromkeys(r["skus"]))
-        try:
-            count, url = fetch_image_count(token, r["item_id"])
-        except urllib.error.HTTPError as e:
-            print(f"[ERR] {r['item_id']}: {e.code} {e.read()[:200]!r}",
-                  file=sys.stderr)
+    try:
+        for n, li in enumerate(todo, 1):
+            try:
+                count, _ = fetch_image_count(token, li["item_id"])
+                cache[li["item_id"]] = count
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    print("Browse API の 1 日の上限に達しました。リセット後に再実行してください。")
+                    break
+                if e.code == 404:  # 在庫切れ等で表示されていない出品
+                    cache[li["item_id"]] = None
+                else:
+                    print(f"[ERR] {li['item_id']}: {e.code} {e.read()[:200]!r}",
+                          file=sys.stderr)
+            if n % 100 == 0:
+                CACHE_PATH.write_text(json.dumps(cache))
+                print(f"{n}/{len(todo)} checked")
+            time.sleep(0.05)
+    finally:
+        CACHE_PATH.write_text(json.dumps(cache))
+
+    for li in listings:
+        li["image_count"] = cache.get(li["item_id"], "未取得")
+        li["url"] = f"https://www.ebay.com/itm/{li['item_id']}"
+    return listings
+
+
+def summarize_by_sku(listings, max_images):
+    """SKU ごとにまとめ、どこかのサイトで画像が max_images 枚以下の SKU を返す。"""
+    by_sku = {}
+    for li in listings:
+        by_sku.setdefault(li["sku"], []).append(li)
+    out = []
+    for sku, lis in by_sku.items():
+        counts = [li for li in lis if isinstance(li["image_count"], int)]
+        low = [li for li in counts if li["image_count"] <= max_images]
+        if not low:
             continue
-        items.append({
-            "item_id": r["item_id"],
-            "sku": skus[0] if len(skus) == 1 else "",
-            "variation_skus": " / ".join(skus) if len(skus) > 1 else "",
-            "title": r["title"],
-            "image_count": count,
-            "url": url,
+        rep = next((li for li in lis if li["site"] == "US"), lis[0])
+        out.append({
+            "sku": sku,
+            "min_images": min(li["image_count"] for li in low),
+            "low_sites": " ".join(sorted(f"{li['site']}:{li['image_count']}" for li in low)),
+            "all_sites_low": "YES" if len(low) == len(lis) else "",
+            "site_count": len(lis),
+            "unchecked_sites": sum(1 for li in lis if li["image_count"] == "未取得"),
+            "title": rep["title"],
+            "low_item_ids": " ".join(li["item_id"] for li in low),
         })
-        if n % 50 == 0 or n == len(rows):
-            print(f"{n}/{len(rows)} checked")
-        time.sleep(0.05)
-    return items
+    return sorted(out, key=lambda r: (r["min_images"], r["sku"]))
+
+
+def write_csv(path, rows, fields):
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(rows)
+    print(f"wrote {path} ({len(rows)} rows)")
 
 
 def main():
@@ -212,30 +272,42 @@ def main():
     ap.add_argument("--max-images", type=int, default=2,
                     help="この枚数以下を抽出 (既定: 2)")
     args = ap.parse_args()
+    OUT_DIR.mkdir(exist_ok=True)
+    stamp = date.today().isoformat()
 
     if args.csv:
-        items = fetch_via_csv(args.csv)
-    elif os.environ.get("EBAY_USER_TOKEN"):
-        items = fetch_via_trading(os.environ["EBAY_USER_TOKEN"])
-    else:
-        sys.exit("EBAY_USER_TOKEN を設定するか、--csv で Seller Hub の CSV を指定してください")
+        listings = fetch_via_csv(args.csv)
+        skus = summarize_by_sku(listings, args.max_images)
+        write_csv(OUT_DIR / f"low_image_skus_{stamp}.csv", skus, list(skus[0]) if skus else ["sku"])
+        detail = sorted(
+            (li for li in listings
+             if isinstance(li["image_count"], int) and li["image_count"] <= args.max_images),
+            key=lambda li: (li["image_count"], li["sku"], li["site"]))
+        write_csv(OUT_DIR / f"low_image_listings_{stamp}.csv", detail,
+                  ["sku", "site", "item_id", "image_count", "quantity", "title", "url"])
+        unchecked = sum(1 for li in listings if li["image_count"] == "未取得")
+        hidden = sum(1 for li in listings if li["image_count"] is None)
+        print(f"\n出品 {len(listings)} 件 / SKU {len({li['sku'] for li in listings})} 種")
+        print(f"画像 {args.max_images} 枚以下: {len(detail)} 出品 / {len(skus)} SKU")
+        print(f"  (うち全サイトで {args.max_images} 枚以下の SKU: "
+              f"{sum(1 for s in skus if s['all_sites_low'])})")
+        if hidden:
+            print(f"  非表示で確認できない出品 (在庫切れ等): {hidden} 件")
+        if unchecked:
+            print(f"  未取得: {unchecked} 件 → API 上限リセット後に同じコマンドを再実行")
+        return
 
+    if not os.environ.get("EBAY_USER_TOKEN"):
+        sys.exit("EBAY_USER_TOKEN を設定するか、--csv で Seller Hub の CSV を指定してください")
+    items = fetch_via_trading(os.environ["EBAY_USER_TOKEN"])
     hits = sorted((i for i in items if i["image_count"] <= args.max_images),
                   key=lambda i: (i["image_count"], i["sku"] or i["variation_skus"]))
-
-    OUT_DIR.mkdir(exist_ok=True)
-    path = OUT_DIR / f"low_image_listings_{date.today().isoformat()}.csv"
-    fields = ["sku", "variation_skus", "item_id", "image_count", "title", "url"]
-    with open(path, "w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
-        w.writeheader()
-        w.writerows(hits)
-
+    write_csv(OUT_DIR / f"low_image_listings_{stamp}.csv", hits,
+              ["sku", "variation_skus", "item_id", "image_count", "title", "url"])
     no_sku = sum(1 for i in hits if not i["sku"] and not i["variation_skus"])
     print(f"\n出品中 {len(items)} 件中、画像 {args.max_images} 枚以下: {len(hits)} 件")
     if no_sku:
         print(f"  うち SKU 未設定: {no_sku} 件 (item_id で確認してください)")
-    print(f"wrote {path}")
 
 
 if __name__ == "__main__":
