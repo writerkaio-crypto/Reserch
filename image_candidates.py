@@ -31,8 +31,8 @@ SUPPLIER_COLS = range(38, 43)  # AM〜AQ
 MERCARI_SEARCH_COL = 44  # AS
 SKU_COL = 3  # D
 NAME_COL = 4  # E
-MAX_SOLD_CHECK = 12  # 売り切れ検索で詳細を確認する最大件数
-MAX_SOLD_CANDIDATES = 5
+MAX_SOLD_CHECK = 30  # 売り切れ検索で詳細を確認する最大件数
+MAX_SOLD_CANDIDATES = 8
 CONCURRENCY = 4
 
 # 接続が許可されていない / 画像を取得できないドメイン
