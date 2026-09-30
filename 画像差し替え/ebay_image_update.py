@@ -14,6 +14,8 @@ import json
 import os
 import re
 import sys
+import time
+import urllib.error
 import urllib.request
 from datetime import date
 
@@ -37,8 +39,14 @@ def call(verb, inner):
             "Content-Type": "text/xml",
         },
     )
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return r.read().decode()
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return r.read().decode()
+        except (urllib.error.URLError, TimeoutError):
+            if attempt == 3:
+                raise
+            time.sleep(2 ** (attempt + 1))  # 一時的な通信切れは 2, 4, 8 秒待って再試行
 
 
 def current_pictures(item_id):
@@ -109,6 +117,9 @@ def main():
 
     if log:
         out = f"update_log_{date.today()}.json"
+        if os.path.exists(out):  # 同じ日の複数回実行は追記する
+            with open(out, encoding="utf-8") as f:
+                log = json.load(f) + log
         with open(out, "w", encoding="utf-8") as f:
             json.dump(log, f, ensure_ascii=False, indent=1)
         print(f"ログ: {out}")
