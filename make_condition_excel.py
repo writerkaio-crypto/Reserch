@@ -103,7 +103,8 @@ def main():
         for p in rv["picks"]:
             it = items[p["url"]]
             rk = rank(it["condition"])
-            diff = "同じ" if base is None or rk == base else f"{rk - base:+d}段階"
+            diff = ("同じ" if base is None or rk == base else
+                    f"{abs(rk - base)}段階{'良い' if rk < base else '悪い'}")
             if base is None:
                 diff = "（仕入先不明）"
             ws.append([None, sku, p["grade"], None, it["title"], it["condition"], diff,
